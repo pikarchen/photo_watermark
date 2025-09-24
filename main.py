@@ -41,15 +41,46 @@ class MainWindow(QMainWindow):
 
         main_layout.addWidget(left_widget, 2)
 
-        # 右侧：图片预览区
-        right_widget = QWidget()
-        right_layout = QVBoxLayout(right_widget)
-        right_layout.addWidget(QLabel('图片预览：'))
-        self.preview_label = QLabel()
-        self.preview_label.setFixedSize(600, 600)
-        self.preview_label.setAlignment(Qt.AlignCenter)
-        right_layout.addWidget(self.preview_label)
-        main_layout.addWidget(right_widget, 3)
+    # 右侧：图片预览区和水印设置
+    right_widget = QWidget()
+    right_layout = QVBoxLayout(right_widget)
+    right_layout.addWidget(QLabel('图片预览：'))
+    self.preview_label = QLabel()
+    self.preview_label.setFixedSize(600, 600)
+    self.preview_label.setAlignment(Qt.AlignCenter)
+    right_layout.addWidget(self.preview_label)
+
+    # 文本水印设置区
+    right_layout.addWidget(QLabel('文本水印设置：'))
+    self.watermark_text_input = QLabel('内容:')
+    self.watermark_text = QPushButton('点击输入水印文本')
+    self.watermark_text.setStyleSheet('text-align:left')
+    self.watermark_text_val = ''
+    self.watermark_text.clicked.connect(self.input_watermark_text)
+    right_layout.addWidget(self.watermark_text_input)
+    right_layout.addWidget(self.watermark_text)
+
+    # 透明度调节
+    from PyQt5.QtWidgets import QSlider
+    self.opacity_label = QLabel('透明度: 100%')
+    self.opacity_slider = QSlider(Qt.Horizontal)
+    self.opacity_slider.setMinimum(10)
+    self.opacity_slider.setMaximum(100)
+    self.opacity_slider.setValue(100)
+    self.opacity_slider.valueChanged.connect(self.update_opacity_label)
+    right_layout.addWidget(self.opacity_label)
+    right_layout.addWidget(self.opacity_slider)
+
+    main_layout.addWidget(right_widget, 3)
+    def input_watermark_text(self):
+        from PyQt5.QtWidgets import QInputDialog
+        text, ok = QInputDialog.getText(self, '输入水印文本', '水印内容：', text=self.watermark_text_val)
+        if ok:
+            self.watermark_text_val = text
+            self.watermark_text.setText(text if text else '点击输入水印文本')
+
+    def update_opacity_label(self, value):
+        self.opacity_label.setText(f'透明度: {value}%')
 
         # 绑定事件
         self.btn_import_single.clicked.connect(self.import_single_image)
@@ -117,6 +148,9 @@ class MainWindow(QMainWindow):
         fmt, ok = QInputDialog.getItem(self, '选择导出格式', '格式：', ['JPEG', 'PNG'], 0, False)
         if not ok:
             return
+        # 文本水印参数
+        text = self.watermark_text_val
+        opacity = self.opacity_slider.value() / 100.0
         for path in self.image_paths:
             fname = os.path.basename(path)
             name, ext = os.path.splitext(fname)
@@ -127,7 +161,24 @@ class MainWindow(QMainWindow):
                 out_path = os.path.join(folder, name + '_watermarked' + out_ext)
             pixmap = QPixmap(path)
             if not pixmap.isNull():
-                pixmap.save(out_path, fmt)
+                if text:
+                    # 添加文本水印
+                    from PyQt5.QtGui import QPainter, QColor, QFont
+                    p = QPixmap(pixmap)
+                    painter = QPainter(p)
+                    painter.setRenderHint(QPainter.Antialiasing)
+                    font = QFont('Arial', 32)
+                    painter.setFont(font)
+                    color = QColor(255, 0, 0)
+                    color.setAlphaF(opacity)
+                    painter.setPen(color)
+                    # 居中绘制
+                    rect = p.rect()
+                    painter.drawText(rect, Qt.AlignCenter, text)
+                    painter.end()
+                    p.save(out_path, fmt)
+                else:
+                    pixmap.save(out_path, fmt)
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
