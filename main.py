@@ -8,6 +8,37 @@ from PyQt5.QtCore import Qt
 import os
 
 class MainWindow(QMainWindow):
+    # 字体选择
+    from PyQt5.QtWidgets import QFontComboBox, QSpinBox, QColorDialog
+    font_layout = QHBoxLayout()
+    font_layout.addWidget(QLabel('字体:'))
+    self.font_combo = QFontComboBox()
+    font_layout.addWidget(self.font_combo)
+    font_layout.addWidget(QLabel('字号:'))
+    self.font_size_spin = QSpinBox()
+    self.font_size_spin.setRange(10, 100)
+    self.font_size_spin.setValue(32)
+    font_layout.addWidget(self.font_size_spin)
+    right_layout.addLayout(font_layout)
+
+    # 颜色选择
+    color_layout = QHBoxLayout()
+    color_layout.addWidget(QLabel('颜色:'))
+    self.color_btn = QPushButton('选择颜色')
+    self.color_btn.clicked.connect(self.choose_color)
+    self.watermark_color = (255, 0, 0)
+    color_layout.addWidget(self.color_btn)
+    right_layout.addLayout(color_layout)
+
+    # 阴影效果
+    self.shadow_checkbox = QPushButton('添加阴影效果')
+    self.shadow_checkbox.setCheckable(True)
+    right_layout.addWidget(self.shadow_checkbox)
+    def choose_color(self):
+        color = QColorDialog.getColor()
+        if color.isValid():
+            self.watermark_color = (color.red(), color.green(), color.blue())
+            self.color_btn.setStyleSheet(f'background-color: {color.name()};')
     def __init__(self):
         super().__init__()
         self.setWindowTitle('Photo Watermark')
@@ -60,8 +91,34 @@ class MainWindow(QMainWindow):
     right_layout.addWidget(self.watermark_text_input)
     right_layout.addWidget(self.watermark_text)
 
+    # 字体选择
+    from PyQt5.QtWidgets import QFontComboBox, QSpinBox, QColorDialog, QSlider
+    font_layout = QHBoxLayout()
+    font_layout.addWidget(QLabel('字体:'))
+    self.font_combo = QFontComboBox()
+    font_layout.addWidget(self.font_combo)
+    font_layout.addWidget(QLabel('字号:'))
+    self.font_size_spin = QSpinBox()
+    self.font_size_spin.setRange(10, 100)
+    self.font_size_spin.setValue(32)
+    font_layout.addWidget(self.font_size_spin)
+    right_layout.addLayout(font_layout)
+
+    # 颜色选择
+    color_layout = QHBoxLayout()
+    color_layout.addWidget(QLabel('颜色:'))
+    self.color_btn = QPushButton('选择颜色')
+    self.color_btn.clicked.connect(self.choose_color)
+    self.watermark_color = (255, 0, 0)
+    color_layout.addWidget(self.color_btn)
+    right_layout.addLayout(color_layout)
+
+    # 阴影效果
+    self.shadow_checkbox = QPushButton('添加阴影效果')
+    self.shadow_checkbox.setCheckable(True)
+    right_layout.addWidget(self.shadow_checkbox)
+
     # 透明度调节
-    from PyQt5.QtWidgets import QSlider
     self.opacity_label = QLabel('透明度: 100%')
     self.opacity_slider = QSlider(Qt.Horizontal)
     self.opacity_slider.setMinimum(10)
@@ -143,37 +200,43 @@ class MainWindow(QMainWindow):
         folder = QFileDialog.getExistingDirectory(self, '选择导出文件夹')
         if not folder:
             return
-        # 简单命名规则：保留原名，支持 PNG/JPEG 选择
         from PyQt5.QtWidgets import QInputDialog
         fmt, ok = QInputDialog.getItem(self, '选择导出格式', '格式：', ['JPEG', 'PNG'], 0, False)
         if not ok:
             return
-        # 文本水印参数
         text = self.watermark_text_val
         opacity = self.opacity_slider.value() / 100.0
+        font_family = self.font_combo.currentFont().family()
+        font_size = self.font_size_spin.value()
+        color_tuple = self.watermark_color
+        shadow = self.shadow_checkbox.isChecked()
         for path in self.image_paths:
             fname = os.path.basename(path)
             name, ext = os.path.splitext(fname)
             out_ext = '.jpg' if fmt == 'JPEG' else '.png'
             out_path = os.path.join(folder, name + out_ext)
-            # 禁止覆盖原图
             if os.path.abspath(out_path) == os.path.abspath(path):
                 out_path = os.path.join(folder, name + '_watermarked' + out_ext)
             pixmap = QPixmap(path)
             if not pixmap.isNull():
                 if text:
-                    # 添加文本水印
                     from PyQt5.QtGui import QPainter, QColor, QFont
                     p = QPixmap(pixmap)
                     painter = QPainter(p)
                     painter.setRenderHint(QPainter.Antialiasing)
-                    font = QFont('Arial', 32)
+                    font = QFont(font_family, font_size)
                     painter.setFont(font)
-                    color = QColor(255, 0, 0)
+                    color = QColor(*color_tuple)
                     color.setAlphaF(opacity)
                     painter.setPen(color)
-                    # 居中绘制
                     rect = p.rect()
+                    # 阴影效果
+                    if shadow:
+                        shadow_color = QColor(0, 0, 0)
+                        shadow_color.setAlphaF(opacity * 0.5)
+                        painter.setPen(shadow_color)
+                        painter.drawText(rect.translated(2, 2), Qt.AlignCenter, text)
+                        painter.setPen(color)
                     painter.drawText(rect, Qt.AlignCenter, text)
                     painter.end()
                     p.save(out_path, fmt)
