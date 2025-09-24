@@ -1,0 +1,29 @@
+{
+  "默认模板": {
+    "text": "水印文字",
+    "font_family": "Arial",
+    "font_size": 24,
+    "font_color": [
+      255,
+      255,
+      255,
+      180
+    ],
+    "position": "bottom_right",
+    "opacity": 70,
+    "rotation": 0,
+    "is_bold": false,
+    "is_italic": false,
+    "has_shadow": false,
+    "shadow_color": [
+      0,
+      0,
+      0,
+      100
+    ],
+    "shadow_offset": [
+      2,
+      2
+    ]
+  }
+}
