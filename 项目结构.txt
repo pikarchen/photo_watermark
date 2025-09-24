@@ -6,9 +6,6 @@
 ├── 📄 requirements.txt     # Python依赖包列表
 ├── 📄 README.md           # 项目说明文档
 ├── 📄 templates.json      # 水印模板配置文件
-├── 📄 install.bat         # Windows安装脚本
-├── 📄 run.bat            # Windows启动脚本
-├── 📄 test_app.py        # 测试脚本
 └── 📄 项目结构.txt        # 本文件
 
 🔧 主要功能模块
@@ -55,7 +52,7 @@
 ===========
 
 1. 启动程序
-   - 双击 run.bat 或运行 python main.py
+   - 运行 python main.py
 
 2. 导入图片
    - 选择单张/批量/文件夹导入
