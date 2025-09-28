@@ -230,6 +230,13 @@ class ExportThread(QThread):
         return result
 
     def _calc_pos_by_setting(self, image_size, overlay_size):
+        # 优先使用自定义位置
+        custom_pos = self.settings['watermark_settings'].get('custom_position')
+        if custom_pos:
+            # 将预览坐标转换为原图坐标
+            return self._preview_to_image_coords(custom_pos, image_size, overlay_size)
+            
+        # 使用预设位置
         img_w, img_h = image_size
         w, h = overlay_size
         margin = 20
@@ -251,6 +258,32 @@ class ExportThread(QThread):
         if pos_key == 'bottom_center':
             return ((img_w - w) // 2, img_h - h - margin)
         return (img_w - w - margin, img_h - h - margin)
+        
+    def _preview_to_image_coords(self, preview_pos, image_size, overlay_size):
+        """将预览坐标转换为原图坐标（导出线程用）"""
+        try:
+            img_width, img_height = image_size
+            # 假设预览区域为 400x300（与主界面一致）
+            preview_width = 400
+            preview_height = 300
+            
+            # 计算缩放比例
+            scale_x = preview_width / img_width
+            scale_y = preview_height / img_height
+            scale = min(scale_x, scale_y)
+            
+            # 计算原图坐标
+            img_x = int(preview_pos[0] / scale)
+            img_y = int(preview_pos[1] / scale)
+            
+            # 确保不超出图片边界
+            wm_width, wm_height = overlay_size
+            img_x = max(0, min(img_x, img_width - wm_width))
+            img_y = max(0, min(img_y, img_height - wm_height))
+            
+            return (img_x, img_y)
+        except Exception:
+            return (20, 20)  # 默认位置
         
     def generate_output_filename(self, original_path):
         """生成输出文件名"""
@@ -282,7 +315,7 @@ class WatermarkApp(QMainWindow):
         self.image_list = []
         self.watermark_settings = {
             'text': '水印文字',
-            'font_family': 'Arial',
+            'font_family': 'Microsoft YaHei',
             'font_size': 24,
             'font_color': (255, 255, 255, 180),
             'position': 'bottom_right',
@@ -292,7 +325,8 @@ class WatermarkApp(QMainWindow):
             'is_italic': False,
             'has_shadow': False,
             'shadow_color': (0, 0, 0, 100),
-            'shadow_offset': (2, 2)
+            'shadow_offset': (2, 2),
+            'custom_position': None  # (x, y) 自定义位置，优先级高于 position
         }
         self.templates = {}
         self.init_ui()
@@ -464,6 +498,14 @@ class WatermarkApp(QMainWindow):
         self.preview_label.setText("请选择图片进行预览")
         self.preview_label.setAcceptDrops(True)
         self.preview_label.mousePressEvent = self.on_preview_click
+        self.preview_label.mouseMoveEvent = self.on_preview_drag
+        self.preview_label.mouseReleaseEvent = self.on_preview_release
+        self.preview_label.setMouseTracking(True)
+        
+        # 拖拽状态
+        self.dragging = False
+        self.drag_start_pos = None
+        self.original_watermark_pos = None
         
         # 使预览区域可滚动
         scroll_area = QScrollArea()
@@ -525,7 +567,8 @@ class WatermarkApp(QMainWindow):
         font_layout = QHBoxLayout()
         font_layout.addWidget(QLabel("字体:"))
         self.font_combo = QComboBox()
-        self.font_combo.addItems(["Arial", "Microsoft YaHei", "SimSun", "Times New Roman"])
+        self.font_combo.addItems(["Microsoft YaHei", "SimSun", "Arial", "Times New Roman"])
+        self.font_combo.setCurrentText("Microsoft YaHei")
         self.font_combo.currentTextChanged.connect(self.update_preview)
         font_layout.addWidget(self.font_combo)
         text_layout.addLayout(font_layout)
@@ -899,10 +942,15 @@ class WatermarkApp(QMainWindow):
             
     def get_watermark_position(self, image_size, watermark_size):
         """计算水印位置"""
+        # 优先使用自定义位置
+        custom_pos = self.watermark_settings.get('custom_position')
+        if custom_pos:
+            # 将预览坐标转换为原图坐标
+            return self.preview_to_image_coords(custom_pos, image_size, watermark_size)
+            
+        # 使用预设位置
         img_width, img_height = image_size
         wm_width, wm_height = watermark_size
-        
-        # 添加边距
         margin = 20
         
         if self.watermark_settings['position'] == 'top_left':
@@ -926,6 +974,31 @@ class WatermarkApp(QMainWindow):
         else:
             return (margin, margin)
             
+    def preview_to_image_coords(self, preview_pos, image_size, watermark_size):
+        """将预览坐标转换为原图坐标"""
+        try:
+            img_width, img_height = image_size
+            preview_width = self.preview_label.width()
+            preview_height = self.preview_label.height()
+            
+            # 计算缩放比例
+            scale_x = preview_width / img_width
+            scale_y = preview_height / img_height
+            scale = min(scale_x, scale_y)
+            
+            # 计算原图坐标
+            img_x = int(preview_pos[0] / scale)
+            img_y = int(preview_pos[1] / scale)
+            
+            # 确保不超出图片边界
+            wm_width, wm_height = watermark_size
+            img_x = max(0, min(img_x, img_width - wm_width))
+            img_y = max(0, min(img_y, img_height - wm_height))
+            
+            return (img_x, img_y)
+        except Exception:
+            return (20, 20)  # 默认位置
+            
     def get_text_color(self):
         """获取文本颜色"""
         # 使用设置的颜色和透明度
@@ -936,6 +1009,8 @@ class WatermarkApp(QMainWindow):
     def set_watermark_position(self, position):
         """设置水印位置"""
         self.watermark_settings['position'] = position
+        # 清除自定义位置，使用预设位置
+        self.watermark_settings['custom_position'] = None
         self.update_preview()
         
     def choose_color(self):
@@ -952,22 +1027,123 @@ class WatermarkApp(QMainWindow):
         if not self.current_image:
             return
             
-        # 获取点击位置相对于图片的位置
-        # 这里简化处理，实际应该计算精确的水印位置
         if event.button() == Qt.LeftButton:
-            # 切换水印位置
-            positions = ['top_left', 'top_center', 'top_right', 
-                       'middle_left', 'center', 'middle_right',
-                       'bottom_left', 'bottom_center', 'bottom_right']
-            current_pos = self.watermark_settings['position']
-            try:
-                current_index = positions.index(current_pos)
-                next_index = (current_index + 1) % len(positions)
-                self.watermark_settings['position'] = positions[next_index]
-                self.update_preview()
-            except ValueError:
-                self.watermark_settings['position'] = 'bottom_right'
-                self.update_preview()
+            # 检查是否点击在水印区域
+            if self.is_click_on_watermark(event.pos()):
+                # 开始拖拽
+                self.dragging = True
+                self.drag_start_pos = event.pos()
+                self.original_watermark_pos = self.watermark_settings.get('custom_position')
+                self.preview_label.setCursor(Qt.ClosedHandCursor)
+            else:
+                # 切换水印位置
+                positions = ['top_left', 'top_center', 'top_right', 
+                           'middle_left', 'center', 'middle_right',
+                           'bottom_left', 'bottom_center', 'bottom_right']
+                current_pos = self.watermark_settings['position']
+                try:
+                    current_index = positions.index(current_pos)
+                    next_index = (current_index + 1) % len(positions)
+                    self.watermark_settings['position'] = positions[next_index]
+                    # 清除自定义位置，使用预设位置
+                    self.watermark_settings['custom_position'] = None
+                    self.update_preview()
+                except ValueError:
+                    self.watermark_settings['position'] = 'bottom_right'
+                    self.watermark_settings['custom_position'] = None
+                    self.update_preview()
+                    
+    def on_preview_drag(self, event):
+        """预览区域拖拽事件"""
+        if not self.dragging or not self.current_image:
+            return
+            
+        # 计算拖拽偏移
+        delta = event.pos() - self.drag_start_pos
+        if self.original_watermark_pos:
+            new_pos = (self.original_watermark_pos[0] + delta.x(), 
+                      self.original_watermark_pos[1] + delta.y())
+        else:
+            # 从当前位置计算
+            current_pos = self.get_current_watermark_position()
+            new_pos = (current_pos[0] + delta.x(), current_pos[1] + delta.y())
+            
+        # 更新自定义位置
+        self.watermark_settings['custom_position'] = new_pos
+        self.update_preview()
+        
+    def on_preview_release(self, event):
+        """预览区域释放事件"""
+        if self.dragging:
+            self.dragging = False
+            self.drag_start_pos = None
+            self.original_watermark_pos = None
+            self.preview_label.setCursor(Qt.ArrowCursor)
+            
+    def is_click_on_watermark(self, click_pos):
+        """检查点击位置是否在水印区域"""
+        if not self.current_image:
+            return False
+            
+        try:
+            # 获取当前水印位置和大小
+            current_pos = self.get_current_watermark_position()
+            if not current_pos:
+                return False
+                
+            # 计算水印区域（简化：假设水印区域为 100x30 像素）
+            watermark_rect = QRect(current_pos[0], current_pos[1], 100, 30)
+            return watermark_rect.contains(click_pos)
+        except Exception:
+            return False
+            
+    def get_current_watermark_position(self):
+        """获取当前水印在预览图中的位置"""
+        if not self.current_image:
+            return None
+            
+        try:
+            # 加载原图获取尺寸
+            image = Image.open(self.current_image)
+            img_width, img_height = image.size
+            
+            # 计算预览缩放比例
+            preview_width = self.preview_label.width()
+            preview_height = self.preview_label.height()
+            scale_x = preview_width / img_width
+            scale_y = preview_height / img_height
+            scale = min(scale_x, scale_y)
+            
+            # 计算水印在预览中的位置
+            if self.watermark_settings.get('custom_position'):
+                return self.watermark_settings['custom_position']
+            else:
+                # 使用预设位置计算
+                position = self.watermark_settings['position']
+                margin = 20
+                
+                if position == 'top_left':
+                    return (margin, margin)
+                elif position == 'top_center':
+                    return (preview_width // 2 - 50, margin)
+                elif position == 'top_right':
+                    return (preview_width - 100 - margin, margin)
+                elif position == 'middle_left':
+                    return (margin, preview_height // 2 - 15)
+                elif position == 'center':
+                    return (preview_width // 2 - 50, preview_height // 2 - 15)
+                elif position == 'middle_right':
+                    return (preview_width - 100 - margin, preview_height // 2 - 15)
+                elif position == 'bottom_left':
+                    return (margin, preview_height - 30 - margin)
+                elif position == 'bottom_center':
+                    return (preview_width // 2 - 50, preview_height - 30 - margin)
+                elif position == 'bottom_right':
+                    return (preview_width - 100 - margin, preview_height - 30 - margin)
+                else:
+                    return (margin, margin)
+        except Exception:
+            return None
             
     def on_opacity_changed(self, value):
         """透明度改变"""
@@ -1158,7 +1334,7 @@ class WatermarkApp(QMainWindow):
         
         # 更新文本设置
         self.text_edit.setText(settings.get('text', '水印文字'))
-        self.font_combo.setCurrentText(settings.get('font_family', 'Arial'))
+        self.font_combo.setCurrentText(settings.get('font_family', 'Microsoft YaHei'))
         self.font_size_spin.setValue(settings.get('font_size', 24))
         self.opacity_slider.setValue(settings.get('opacity', 70))
         self.opacity_label.setText(f"{settings.get('opacity', 70)}%")
